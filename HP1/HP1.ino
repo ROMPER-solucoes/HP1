@@ -1,5 +1,6 @@
 #include <LiquidCrystal_I2C.h>
 #include <Stepper.h>
+#include <EEPROM.h>
 
 // Define os pinos dos sensores de temperatura
 #define TEMP_COMPRESS_ENTRADA A0
@@ -32,6 +33,9 @@
 #define PROXIMO_PIN 23
 #define ENTER_PIN 27
 
+// Define o endereço na EEPROM para armazenar o set point
+#define EEPROM_SETPOINT_ADDRESS 0
+
 // Cria os objetos das classes LiquidCrystal_I2C, Stepper e Servo
 LiquidCrystal_I2C lcd1(0x27, 20, 4);
 Stepper valvex(200, VALVEX_PIN1, VALVEX_PIN2, VALVEX_PIN3, VALVEX_PIN4);
@@ -54,7 +58,8 @@ bool inSetUpMenu = false;
 int lastButtonState25 = HIGH;
 int lastButtonState23 = HIGH;
 int lastButtonState27 = HIGH;
-int setPointValue = false; // Valor inicial do SET POINT (pode ser ajustado conforme necessário)
+int setPointValue;
+unsigned long defrostDuration;  // Tempo de duração do ciclo de degelo em milissegundos (exemplo: 10 minutos)  
 
 void showSetUpMenu() {
   lcd1.clear();
@@ -77,7 +82,7 @@ void showSetUpMenu() {
 
 void setup() {
   // Inicializa o LCD
-  lcd1.begin();
+  lcd1.init();
   lcd1.backlight();
 
   // Inicializa o motor de passo da válvula
@@ -91,6 +96,15 @@ void setup() {
   // Configuração do pino para o botão "Enter"
   pinMode(ENTER_PIN, INPUT_PULLUP);
 
+  // Leitura do valor do set point na EEPROM
+  setPointValue = EEPROM.read(EEPROM_SETPOINT_ADDRESS);
+    
+  // Verifica se o valor lido está fora dos limites aceitáveis
+  if (defrostDuration < 60000UL || defrostDuration > 240000UL) {
+    // Valor fora dos limites, define um valor padrão (por exemplo, 120000UL)
+    defrostDuration = 120000UL;
+  }
+  
   // Mostra uma mensagem inicial no LCD
   lcd1.setCursor(0, 0);
   lcd1.print("Heat Pump");
@@ -101,18 +115,19 @@ void setup() {
   delay(2000);
   lcd1.print("Loading...");
   delay(2000);
+  
 }
 
 void loop() {
   // Lê as temperaturas dos sensores e converte para °C
-  temp_compress_entrada = 1024 - (log((analogRead(TEMP_COMPRESS_ENTRADA)) + 360) / log(1024 + 1)) * 1024;
-  temp_compress_saida = 1024 - (log((analogRead(TEMP_COMPRESS_SAIDA)) + 360) / log(1024 + 1)) * 1024;
-  temp_permut_entrada = 1024 - (log((analogRead(TEMP_PERMUT_ENTRADA)) + 360) / log(1024 + 1)) * 1024;
-  temp_permut_saida = 1024 - (log((analogRead(TEMP_PERMUT_SAIDA)) + 360) / log(1024 + 1)) * 1024;
-  temp_valvex_entrada = 1024 - (log((analogRead(TEMP_VALVEX_ENTRADA)) + 360) / log(1024 + 1)) * 1024;
-  temp_evap_entrada = 1024 - (log((analogRead(TEMP_EVAP_ENTRADA)) + 360) / log(1024 + 1)) * 1024;
-  temp_rua = 1024 - (log((analogRead(TEMP_RUA)) + 360) / log(1024 + 1)) * 1024;
-  temp_ac_saida = 1024 - (log((analogRead(TEMP_AC_SAIDA)) + 360) / log(1024 + 1)) * 1024;
+  temp_compress_entrada = 1023 - (log((analogRead(TEMP_COMPRESS_ENTRADA)) + 360) / log(1023 + 1)) * 1023;
+  temp_compress_saida = 1023 - (log((analogRead(TEMP_COMPRESS_SAIDA)) + 360) / log(1023 + 1)) * 1023;
+  temp_permut_entrada = 1023 - (log((analogRead(TEMP_PERMUT_ENTRADA)) + 360) / log(1023 + 1)) * 1023;
+  temp_permut_saida = 1023 - (log((analogRead(TEMP_PERMUT_SAIDA)) + 360) / log(1023 + 1)) * 1023;
+  temp_valvex_entrada = 1023 - (log((analogRead(TEMP_VALVEX_ENTRADA)) + 360) / log(1023 + 1)) * 1023;
+  temp_evap_entrada = 1023 - (log((analogRead(TEMP_EVAP_ENTRADA)) + 360) / log(1023 + 1)) * 1023;
+  temp_rua = 1023 - (log((analogRead(TEMP_RUA)) + 360) / log(1023 + 1)) * 1023;
+  temp_ac_saida = 1023 - (log((analogRead(TEMP_AC_SAIDA)) + 360) / log(1023 + 1)) * 1023;
 
   // Controla a válvula de expansão para manter a temperatura de saída do circuito de alta entre os limites definidos
   if (temp_compress_saida > TEMP_COMPRESS_MAX) {
@@ -134,14 +149,14 @@ void loop() {
     // Reduz a frequência do compressor para diminuir a velocidade do gás e diminuir a temperatura
     freq_compress -= FREQ_INV_COMPRESS_MAX / PASSOS_VALVEX;
     if (freq_compress < FREQ_INV_COMPRESS_MIN) freq_compress = FREQ_INV_COMPRESS_MIN; // Limita a frequência mínima do compressor em FREQ_MIN Hz
-    analogWrite(INV_COMPRESS_PIN, map(freq_compress, FREQ_INV_COMPRESS_MIN, FREQ_INV_COMPRESS_MAX, 0, 255)); // Envia um sinal PWM proporcional à frequência desejada para o inversor
+    analogWrite(INV_COMPRESS_PIN, map(freq_compress, FREQ_INV_COMPRESS_MIN, FREQ_INV_COMPRESS_MAX, 0, 255)); // Envia um sinal PWM proporcional à frequência desejada para o inversor 
   }
 
   if (temp_compress_entrada < TEMP_COMPRESS_MIN) {
     // Aumenta a frequência do compressor para aumentar a velocidade do gás e aumentar a temperatura
     freq_compress += FREQ_INV_COMPRESS_MAX / PASSOS_VALVEX;
-    if (freq_compress > FREQ_INV_COMPRESS_MAX) freq_compress = FREQ_INV_COMPRESS_MAX; // Limita a frequência máxima do compressor em FREQ_MAX Hz
-    analogWrite(INV_COMPRESS_PIN, map(freq_compress, FREQ_INV_COMPRESS_MIN, FREQ_INV_COMPRESS_MAX, 0, 255)); // Envia um sinal PWM proporcional à frequência desejada para o inversor
+    if (freq_compress > FREQ_INV_COMPRESS_MAX) freq_compress = FREQ_INV_COMPRESS_MAX; // Limita a frequência máxima do compressor em FREQ_MAX Hz 
+    analogWrite(INV_COMPRESS_PIN, map(freq_compress, FREQ_INV_COMPRESS_MIN, FREQ_INV_COMPRESS_MAX, 0, 255)); // Envia um sinal PWM proporcional à frequência desejada para o inversor 
   }
 
   // Verifica o estado do botão "Anterior" e alterna a direção da transição no LCD1
@@ -169,15 +184,21 @@ void loop() {
   // Verifica o estado do botão "Enter" e gerencia o menu "SET-UP"
   int buttonState27 = digitalRead(ENTER_PIN);
 
-  if (buttonState27 == LOW && lastButtonState27 == HIGH) {
+  static bool enterButtonPressed = false;
+  static unsigned long enterButtonDebounceTime = 0;
+
+  if (buttonState27 == LOW && !enterButtonPressed) {
     // Botão "Enter" foi pressionado
-    enterButtonPressTime = millis();  // Registra o tempo atual
+    enterButtonDebounceTime = millis();
+    enterButtonPressed = true;
   }
 
-  if (buttonState27 == HIGH && lastButtonState27 == LOW) {
+  if (buttonState27 == HIGH && enterButtonPressed) {
     // Botão "Enter" foi solto
-    if (millis() - enterButtonPressTime >= 100) {
-      // Botão "Enter" foi pressionado por 3 segundos ou mais
+    if (millis() - enterButtonDebounceTime >= 50) {
+      // Debounce passou, agora consideramos como uma ação válida
+      enterButtonPressed = false;
+      // Botão "Enter" foi pressionado por 10 mili secs ou mais
       if (!inSetUpMenu) {
         // Se não estiver no menu "SET-UP", entra no menu
         inSetUpMenu = true;
@@ -189,11 +210,12 @@ void loop() {
             // Ação para a opção "SET-POINT"
             // Implemente aqui as ações desejadas para esta opção
             // Neste exemplo, vamos ajustar o SET POINT
-            adjustSetPoint();
+            adjustSetPoint(setPointValue);
             break;
           case 1:
             // Ação para a opção "DEFROST"
             // Implemente aqui as ações desejadas para esta opção
+            adjustDefrost(defrostDuration);
             break;
           case 2:
             // Ação para a opção "DATA e HORA"
@@ -215,9 +237,9 @@ void loop() {
   // Mostra as temperaturas e a frequência no LCD1 apenas se não estiver no menu "SET-UP"
   if (!inSetUpMenu) {
     lcd1.clear();
-    lcd1.setCursor(0, 0);
+    lcd1.setCursor(0, 0);    
     switch (displayMode) {
-      case 0:
+        case 0:        
         lcd1.setCursor(0, 0);
         lcd1.print("S1-Temp.Ent.Comp:");
         lcd1.setCursor(0, 1);
@@ -228,7 +250,8 @@ void loop() {
         lcd1.setCursor(0, 3);
         lcd1.print(temp_compress_saida);
         lcd1.print(" C");
-        break;
+        delay(200);
+        break;        
       case 1:
         lcd1.setCursor(0, 0);
         lcd1.print("S3-Temp.Ent.Perm:");
@@ -240,6 +263,7 @@ void loop() {
         lcd1.setCursor(0, 3);
         lcd1.print(temp_permut_saida);
         lcd1.print(" C");
+        delay(200);
         break;
       case 2:
         lcd1.setCursor(0, 0);
@@ -252,6 +276,7 @@ void loop() {
         lcd1.setCursor(0, 3);
         lcd1.print(temp_evap_entrada);
         lcd1.print(" C");
+        delay(200);
         break;
       case 3:
         lcd1.setCursor(0, 0);
@@ -264,6 +289,7 @@ void loop() {
         lcd1.setCursor(0, 3);
         lcd1.print(temp_ac_saida);
         lcd1.print(" C");
+        delay(200);
         break;
       case 4:
         lcd1.setCursor(0, 0);
@@ -276,6 +302,7 @@ void loop() {
         lcd1.setCursor(0, 3);
         lcd1.print(angulo_valvex);
         lcd1.print("'");
+        delay(200);
         break;
     }
   }
@@ -285,7 +312,7 @@ void loop() {
 }
 
 // Função para ajustar o SET POINT
-void adjustSetPoint() {
+void adjustSetPoint(int &setPointValue) {
   lcd1.clear();
   lcd1.setCursor(1, 0);
   lcd1.print("SET POINT: ");
@@ -310,12 +337,12 @@ void adjustSetPoint() {
     }
 
     if (buttonState27 == HIGH && lastButtonState27 == LOW) {
-      if (confirmationPending && (millis() - enterButtonPressTime >= 100)) {
+      if (confirmationPending && (millis() - enterButtonPressTime >= 10)) {
         // Confirmação bem-sucedida
         exitSetUpMenu = true;
         lcd1.clear();
-        // Salva o novo SET POINT ou executa outras ações de confirmação aqui
-        setPointValue = constrain(setPointValue, 30, 85);  // Limita o SET POINT entre 30 e 85 graus
+        // Salva o novo SET POINT na EEPROM
+        EEPROM.write(EEPROM_SETPOINT_ADDRESS, setPointValue);
       }
       confirmationPending = false;
     }
@@ -332,6 +359,69 @@ void adjustSetPoint() {
 
     lcd1.setCursor(12, 0);
     lcd1.print(setPointValue);
+
+    // Adicionado código para sair e retornar às leituras dos sensores
+    if (digitalRead(ENTER_PIN) == LOW) {
+      exitSetUpMenu = true;
+      lcd1.clear();
+      inSetUpMenu = false;  // Garante que inSetUpMenu seja definido como falso
+      // Salva o novo SET POINT na EEPROM imediatamente após a alteração
+      EEPROM.write(EEPROM_SETPOINT_ADDRESS, setPointValue);
+    }
+
+    delay(50);
+  }
+}
+void adjustDefrost(unsigned long &defrostDuration) {
+  lcd1.clear();
+  lcd1.setCursor(0, 0);
+  lcd1.print("DEFROST Duration");
+  lcd1.setCursor(0, 1);
+  lcd1.print("Current: ");
+  lcd1.print(defrostDuration / 60000);  // Exibe a duração atual em minutos
+  lcd1.print(" minutes");
+  lcd1.setCursor(0, 2);
+  lcd1.print("Pressione 'Enter'");
+  lcd1.setCursor(0, 3);
+  lcd1.print("para confirmar");
+
+  unsigned long enterButtonPressTime = 0;
+  bool confirmationPending = false;
+  bool exitSetUpMenu = false;
+
+  while (inSetUpMenu && !exitSetUpMenu) {
+    int buttonState27 = digitalRead(ENTER_PIN);
+
+    if (buttonState27 == LOW && lastButtonState27 == HIGH) {
+      enterButtonPressTime = millis();
+      confirmationPending = true;
+    }
+
+    if (buttonState27 == HIGH && lastButtonState27 == LOW) {
+      if (confirmationPending && (millis() - enterButtonPressTime >= 10)) {
+        // Confirmação bem-sucedida
+        exitSetUpMenu = true;
+        lcd1.clear();
+      }
+      confirmationPending = false;
+    }
+
+    if (digitalRead(ANTERIOR_PIN) == LOW && lastButtonState25 == HIGH) {
+      // Reduz a duração do ciclo de degelo em 1 minuto, mantendo entre 1 e 4 minutos
+      defrostDuration = max(60000UL, defrostDuration - 60000UL);
+      defrostDuration = min(240000UL, defrostDuration);
+    }
+    lastButtonState25 = digitalRead(ANTERIOR_PIN);
+
+    if (digitalRead(PROXIMO_PIN) == LOW && lastButtonState23 == HIGH) {
+      // Aumenta a duração do ciclo de degelo em 1 minuto, mantendo entre 1 e 4 minutos
+      unsigned long newDuration = min(240000UL, defrostDuration + 60000UL);
+      defrostDuration = newDuration;
+    }
+    lastButtonState23 = digitalRead(PROXIMO_PIN);
+
+    lcd1.setCursor(9, 1);
+    lcd1.print(defrostDuration / 60000);  // Exibe a duração atual em minutos
 
     // Adicionado código para sair e retornar às leituras dos sensores
     if (digitalRead(ENTER_PIN) == LOW) {
