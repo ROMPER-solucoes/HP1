@@ -1,33 +1,50 @@
 #include <Wire.h>
 #include <LiquidCrystal.h>
 
-LiquidCrystal lcd(13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3);
+int luz = 0;
+LiquidCrystal lcd(13, 12, 11,  7,  6,  5,  4); //UNO
+//LiquidCrystal lcd(13, 12, 11,  4,  5,  6,  7); //UNO
+//LiquidCrystal  (rs, rw, en, d4, d5, d6, d7)
+
+//LiquidCrystal lcd(13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3); // MH-ET
 bool lcdCleared = false; // Flag para indicar se o LCD foi limpo
 void receiveEvent(int bytes); // Protótipo da função receiveEvent
 
 void setup() {
   pinMode(25, OUTPUT); // Configura o pino 25 como saída
-  pinMode(14, INPUT_PULLUP); // Configura o pino 14 como entrada com resistor de pull-up
-  pinMode(15, INPUT_PULLUP); // Configura o pino 15 como entrada com resistor de pull-up
-  pinMode(16, INPUT_PULLUP); // Configura o pino 16 como entrada com resistor de pull-up
+  pinMode(2, INPUT_PULLUP); // Configura o pino 14 como entrada com resistor de pull-up
+  pinMode(3, INPUT_PULLUP); // Configura o pino 15 como entrada com resistor de pull-up
+  pinMode(4, INPUT_PULLUP); // Configura o pino 16 como entrada com resistor de pull-up
   
-  lcd.begin(20, 4); // Inicializa o LCD com 20 colunas e 4 linhas
+  ///lcd.begin(20, 4); // Inicializa o LCD com 20 colunas e 4 linhas // MH-ET
+  lcd.begin(16, 2); // Inicializa o LCD com 20 colunas e 4 linhas
   Wire.begin(8); // Endereço deste Transeptor (Transceptor 2) na rede I2C
   Wire.onReceive(receiveEvent); // Configura a função para lidar com a recepção de dados I2C
   Wire.beginTransmission(9); // Endereço do Transeptor 1 na rede I2C
+  analogWrite(9, luz);
+  lcd.clear();
+  lcd.setCursor(0, 0); // Define o cursor do LCD para a posição especificada
+  lcd.print("HELLO BABY"); 
 }
 
 void loop() {
   // Aqui você pode adicionar qualquer lógica adicional que precise ser executada continuamente
   // Verifica o estado dos pinos 14, 15 e 16 e envia os comandos correspondentes se estiverem LOW
-  if (digitalRead(14) == LOW) {
+  if (digitalRead(3) == LOW) {
     sendCommand('E'); // Envia o comando "E" para o t ransmissor
   }
-  if (digitalRead(15) == LOW) {
+  if (digitalRead(2) == LOW) {
     sendCommand('P'); // Envia o comando "P" para o transmissor
   }
-  if (digitalRead(16) == LOW) {
+  if (digitalRead(1) == LOW) {
     sendCommand('A'); // Envia o comando "A" para o transmissor
+  }
+  if (digitalRead(0) == LOW) {
+    lcd.setCursor(0, 1);
+    lcd.print(luz); 
+    luz ++;
+    analogWrite(9, luz);
+    delay(50);
   }  
 }
 
